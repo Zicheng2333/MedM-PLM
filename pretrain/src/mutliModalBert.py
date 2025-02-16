@@ -165,7 +165,7 @@ class MultiModal_Pretrain(PreTrainedBertModel):
 
         self.codebert = CodeBERT(config, dx_voc, rx_voc)
         self.cls = SelfSupervisedHead(
-            config, self.dx_voc_size, self.rx_voc_size)
+            config, self.dx_voc_size, self.rx_voc_size) #用于进行诊断/处方的预测
 
         self.bert = BertModel(config).cuda()
 
@@ -180,15 +180,15 @@ class MultiModal_Pretrain(PreTrainedBertModel):
         # inputs (B, , max_len)
         # bert_pool (B, hidden)
         dx_all_encode_layer_output, dx_bert_pool = self.codebert(dx_inputs, torch.zeros(
-            (dx_inputs.size(0), dx_inputs.size(1))).long().to(dx_inputs.device))
+            (dx_inputs.size(0), dx_inputs.size(1))).long().to(dx_inputs.device)) #dx_bert_pool形状为 [batch_size, hidden_size]，表示每个输入序列的整体表示
         rx_all_encode_layer_output, rx_bert_pool = self.codebert(rx_inputs, torch.zeros(
             (rx_inputs.size(0), rx_inputs.size(1))).long().to(rx_inputs.device))
         txt_all_encode_layer_output, txt_bert_pool = self.bert(txt_input_ids, txt_type_ids, txt_attention_mask)
-        
+
         dx2dx, rx2dx, dx2rx, rx2rx = self.cls(dx_bert_pool, rx_bert_pool)
         text_dx_att = self.text2dx_att(txt_bert_pool.unsqueeze(1), dx_all_encode_layer_output, dx_all_encode_layer_output).squeeze(1)
         text_rx_att = self.text2rx_att(txt_bert_pool.unsqueeze(1), rx_all_encode_layer_output, rx_all_encode_layer_output).squeeze(1)
-        text2dx = self.Text2dxcls(text_dx_att)
+        text2dx = self.Text2dxcls(text_dx_att) #用文本在诊断序列上做注意力
         text2rx = self.Text2rxcls(text_rx_att)
         # output logits
         if rx_labels is None or dx_labels is None:
@@ -290,6 +290,7 @@ class MultiModal_coAtt_residual_Pretrain(PreTrainedBertModel):
 
         dx_bert_att = self.dx2text_att(dx_bert_pool.unsqueeze(1), txt_all_encode_layer_output[-1], txt_all_encode_layer_output[-1]).squeeze(1)
         rx_bert_att = self.rx2text_att(rx_bert_pool.unsqueeze(1), txt_all_encode_layer_output[-1], txt_all_encode_layer_output[-1]).squeeze(1)
+        #增加用处方和诊断向量对文本序列做注意力，将结果加回原来的dx/rx bert poll
         
         # resudial
         dx_bert_pool += dx_bert_att

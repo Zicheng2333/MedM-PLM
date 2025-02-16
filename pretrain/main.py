@@ -38,9 +38,11 @@ def setup(rank, world_size):
 
     # initialize the process group
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    #用于初始化分布式训练环境
 
 def cleanup():
     dist.destroy_process_group()
+    #在训练结束后调用，确保进程顺利终止
 
 
 def main():
@@ -71,7 +73,7 @@ def main():
     # text tokenizer
     txt_tokenizer = BertTokenizer.from_pretrained(args.clinical_bert_dir)
 
-    processor = processors['codeText']()
+    processor = processors['codeText']() #实例化CodeTextProcessor底箱，赋值给processor
     print("TRAIN")
     train_dataset = processor.get_train_examples(args.data_dir)
     print('DEV')
@@ -82,8 +84,7 @@ def main():
     print('Loading Model: ' + args.model_name)
     if args.use_pretrain:
         print("Use Pretraining model")
-        model = MultiModal_Pretrain.from_pretrained(args.pretrain_dir, dx_voc=code_tokenizer.dx_voc,
-                                            rx_voc=code_tokenizer.rx_voc)
+        model = MultiModal_Pretrain.from_pretrained(args.pretrain_dir, dx_voc=code_tokenizer.dx_voc,                                       rx_voc=code_tokenizer.rx_voc)
     else:
         config = BertConfig(
             vocab_size_or_config_json_file=len(code_tokenizer.vocab.word2idx))
@@ -92,7 +93,7 @@ def main():
         print("Use clinicalBert pretraining model parameters...")
           
         model = MultiModal_coAtt_residual_Pretrain.from_pretrained(args.clinical_bert_dir, dx_voc=code_tokenizer.dx_voc,
-                                            rx_voc=code_tokenizer.rx_voc)
+                                    rx_voc=code_tokenizer.rx_voc)
     
     # setup(local_rank, nprocs)
     
@@ -121,7 +122,7 @@ def main():
                     filter(lambda x : x.requires_grad, model.parameters()), 
                     lr=args.learning_rate)  
     
-    rng = random.Random(args.seed)
+    rng = random.Random(args.seed) #随机数生成器
     train_features = convert_examples_to_features(train_dataset, args.max_seq_length, args.max_predictions_per_seq,
                                                     txt_tokenizer, code_tokenizer, rng)
     

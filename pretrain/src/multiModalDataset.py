@@ -49,6 +49,7 @@ class EHRTokenizer(object):
         # special tokens
         self.vocab.add_sentence(special_tokens)
 
+        #添加药品和诊断代码词汇表
         self.rx_voc = self.add_vocab(os.path.join(data_dir, 'rx-vocab.txt'))
         self.dx_voc = self.add_vocab(os.path.join(data_dir, 'dx-vocab.txt'))
 
@@ -76,6 +77,7 @@ class EHRTokenizer(object):
         return tokens
 
 class Voc(object):
+    #词汇表
     def __init__(self):
         self.idx2word = {}
         self.word2idx = {}
@@ -85,6 +87,8 @@ class Voc(object):
             if word not in self.word2idx:
                 self.idx2word[len(self.word2idx)] = word
                 self.word2idx[word] = len(self.word2idx)
+                #将词汇添加到字典中
+
 
 class InputFeature(object):
     """A single set of features of data."""
@@ -146,14 +150,16 @@ class DataProcessor(object):
 class CodeTextProcessor(DataProcessor):
     """Processor for the code and text data ."""
     def get_set_data(self,data):
+        #data是包含多个list的集合，这个方法将data中的所有list展开到data list中（append添加单个元素，extend递归地将其中的元素添加到list中），并返回去重后的list
         data_list = []
         for d in data:
             data_list.extend(d)
-        set_data = list(set(data_list))
+        set_data = list(set(data_list)) #对data list中的元素去重
         set_data.sort(key=data_list.index)
         return set_data
     
     def get_discharge_summary_txt(self, data):
+        #data是（类别，文本）的列表，这个方法筛选出discharge summary，并返回最后一个
         dis_txt = []
         for d in data:
             cate, txt  = d
@@ -177,7 +183,8 @@ class CodeTextProcessor(DataProcessor):
         y=re.sub('--|__|==','',y)
         return y
 
-    def preprocessing(self, df_less_n): 
+    def preprocessing(self, df_less_n):
+        #预处理discharge summary
         df_less_n['discharge_summary']=df_less_n['discharge_summary'].fillna(' ')
         df_less_n['discharge_summary']=df_less_n['discharge_summary'].str.replace('\n',' ')
         df_less_n['discharge_summary']=df_less_n['discharge_summary'].str.replace('\r',' ')
@@ -190,8 +197,8 @@ class CodeTextProcessor(DataProcessor):
     def split_dataset(self, data_dir):
         data_dict = {}
         data_multi, data_single = self._read_pickle(data_dir)
-        data_multi['Set_NDC'] = data_multi.NDC.map(lambda x: self.get_set_data(x))
-        data_multi['discharge_summary'] = data_multi.CATEGORY_TEXT.map(lambda x: self.get_discharge_summary_txt(x))
+        data_multi['Set_NDC'] = data_multi.NDC.map(lambda x: self.get_set_data(x)) #对data_multi的NDC列应用map函数，map函数对这一列的每个元素调用get_set_data(x)方法（对这个列表进行去重处理）
+        data_multi['discharge_summary'] = data_multi.CATEGORY_TEXT.map(lambda x: self.get_discharge_summary_txt(x)) #对每个元素（text）进行预处理（筛选出最后一次出院记录）
 
         data_single['Set_NDC'] = data_single.NDC.map(lambda x: self.get_set_data(x))
         data_single['discharge_summary'] = data_single.CATEGORY_TEXT.map(lambda x: self.get_discharge_summary_txt(x))
@@ -206,6 +213,7 @@ class CodeTextProcessor(DataProcessor):
 
         def load_ids(data, file_name):
             """
+
             :param data: multi-visit data
             :param file_name:
             :return: raw data form
@@ -214,8 +222,9 @@ class CodeTextProcessor(DataProcessor):
             with open(file_name, 'r') as f:
                 for line in f:
                     ids.append(int(line.rstrip('\n')))
-            return data[data['SUBJECT_ID'].isin(ids)].reset_index(drop=True)
-        data_dict['train_data'] = pd.concat([data_single, load_ids(data_multi, ids_file[0])])
+                    #从文件中读取id
+            return data[data['SUBJECT_ID'].isin(ids)].reset_index(drop=True) #筛选出data中SUBJECT_ID在ids列表中的数据，并重置索引
+        data_dict['train_data'] = pd.concat([data_single, load_ids(data_multi, ids_file[0])])#将data_single和data_multi中符合train id的数据合并，存储为训练数据
         data_dict['dev_data'] = load_ids(data_multi, ids_file[1])
         data_dict['test_data'] = load_ids(data_multi, ids_file[2])
 
@@ -246,7 +255,7 @@ class CodeTextProcessor(DataProcessor):
         """Creates examples for the training and dev sets."""
         examples = []
         for i, row in tqdm(pd_data.iterrows(), desc=set_type, ncols=100):
-            guid = "%s-%s" % (set_type, row['SUBJECT_ID'])
+            guid = "%s-%s" % (set_type, row['SUBJECT_ID']) #对每一个数据生成一个唯一标识符
             dx_code = list(row['DIAG_CODE'])
             rx_code = row['Set_NDC']
             text = row['discharge_summary']
@@ -255,7 +264,8 @@ class CodeTextProcessor(DataProcessor):
         return examples
 
 def convert_examples_to_features(examples, seq_len, max_predictions_per_seq, txt_tokenizer, code_tokenizer, rng):
-
+#这个方法用于将数据转换成模型可用的特征
+#max_predictions_per_seq 每个序列最多mask的token数量
     features = []
     max_len = []
     for (ex_index, example) in tqdm(enumerate(examples), desc='convert_examples_to_features', ncols=100):
@@ -263,11 +273,15 @@ def convert_examples_to_features(examples, seq_len, max_predictions_per_seq, txt
             while len(l) < seq:
                 l.append('[PAD]')
             return l
+        #输入长度不足seq时用PAD填充
 
-        y_dx = np.zeros(len(code_tokenizer.dx_voc.word2idx))
+        y_dx = np.zeros(len(code_tokenizer.dx_voc.word2idx)) #词表的长度
         y_rx = np.zeros(len(code_tokenizer.rx_voc.word2idx))
         for item in example.dx_code:
+            #example有guid， dx和rx code， text四个参数
+
             y_dx[code_tokenizer.dx_voc.word2idx[item]] = 1
+            #code_tokenizer.dx_voc.word2idx[item]：通过word2idx查找到word对应的idx，将标签设置为1
         for item in example.rx_code:
             y_rx[code_tokenizer.rx_voc.word2idx[item]] = 1
 
@@ -279,6 +293,7 @@ def convert_examples_to_features(examples, seq_len, max_predictions_per_seq, txt
 
         """extract input and output tokens
         """
+        #添加cls，并填充到seq len长度
         dx_input_tokens = []
         rx_input_tokens = []
         dx_input_tokens.extend(
@@ -292,9 +307,10 @@ def convert_examples_to_features(examples, seq_len, max_predictions_per_seq, txt
         rx_input_ids = code_tokenizer.convert_tokens_to_ids(rx_input_tokens)
         tokens_text = txt_tokenizer(example.text, padding="max_length", max_length=512, truncation=True)
         txt_input_ids = tokens_text['input_ids']
-        txt_token_type_ids = tokens_text['token_type_ids']
-        txt_attention_mask = tokens_text['attention_mask']
-        
+        txt_token_type_ids = tokens_text['token_type_ids'] #表示属于哪一句话，一般BERT只有一句话，故都是0
+        txt_attention_mask = tokens_text['attention_mask'] #1表示有效Token，0表示padding
+
+        #打印前三个样本的诊断代码和药品代码id
         if ex_index < 3:
             logger.info("*** Example ***")
             logger.info("guid: %s" % (example.guid))
@@ -335,6 +351,13 @@ def random_word(tokens, vocab):
 MaskedLmInstance = collections.namedtuple("MaskedLmInstance",
                                             ["index", "label"])
 def random_word_ids(tokens, vocab, max_predictions_per_seq, rng):
+    '''
+    1.	随机 Mask 15% 的 token
+	2.	80% 的情况下替换为 [MASK]
+	3.	10% 的情况下保持不变
+	4.	10% 的情况下替换为随机 token
+	5.	返回 Mask 后的输入序列、被 Mask 的位置、被 Mask 的原始 token'''
+
     num_to_predict = min(max_predictions_per_seq, max(1, int(round(len(tokens)*0.15))))
     masked_lm_positions = [] 
     masked_lm_labels = []

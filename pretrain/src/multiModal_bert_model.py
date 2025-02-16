@@ -230,6 +230,7 @@ class PreTrainedBertModel(nn.Module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
+            #使用正态分布初始化
             module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
         elif isinstance(module, CodeLayerNorm):
             module.bias.data.zero_()
